@@ -44,8 +44,70 @@ else
   curl -fsSL "https://raw.githubusercontent.com/$REPO/main/Resources/Info.plist" -o "$TMP_DIR/Info.plist"
 fi
 
-printf '%s\n' "=> Compiling native menu bar app"
-swiftc -O -framework AppKit -o "$TMP_DIR/ClamshellToggle" "$TMP_DIR/main.swift"
+# Full Swift optimization is pointless for this tiny utility and can be painfully slow
+# on beta Xcode/Swift toolchains. -Onone produces the same app behavior and installs much faster.
+printf '%s\n' "=> Compiling native menu bar app (fast build)"
+printf '   %s\n' "$(swiftc --version 2>/dev/null | head -n 1 || echo 'Swift version unknown')"
+COMPILE_LOG="$TMP_DIR/swiftc.log"
+TIMEOUT_FLAG="$TMP_DIR/compile-timeout"
+
+swiftc -Onone -framework AppKit -o "$TMP_DIR/ClamshellToggle" "$TMP_DIR/main.swift" >"$COMPILE_LOG" 2>&1 &
+COMPILE_PID=$!
+
+# Give useful feedback instead of appearing frozen.
+(
+  while kill -0 "$COMPILE_PID" 2>/dev/null; do
+    sleep 5
+    if kill -0 "$COMPILE_PID" 2>/dev/null; then
+      printf '%s\n' "   …still compiling"
+    fi
+  done
+) &
+PROGRESS_PID=$!
+
+# A 2 minute compile for this app means the local Swift toolchain is unhealthy/stuck.
+(
+  sleep 120
+  if kill -0 "$COMPILE_PID" 2>/dev/null; then
+    : > "$TIMEOUT_FLAG"
+    /usr/bin/pkill -TERM -P "$COMPILE_PID" 2>/dev/null || true
+    kill -TERM "$COMPILE_PID" 2>/dev/null || true
+  fi
+) &
+WATCHDOG_PID=$!
+
+set +e
+wait "$COMPILE_PID"
+COMPILE_STATUS=$?
+set -e
+
+kill "$PROGRESS_PID" "$WATCHDOG_PID" 2>/dev/null || true
+wait "$PROGRESS_PID" "$WATCHDOG_PID" 2>/dev/null || true
+
+if [[ -f "$TIMEOUT_FLAG" ]]; then
+  printf '%s\n' "Error: Swift compilation took longer than 2 minutes and was stopped." >&2
+  printf '%s\n' "This usually points to a stuck/broken Xcode or Command Line Tools installation." >&2
+  printf '%s\n' "Selected developer directory: $(xcode-select -p 2>/dev/null || echo 'unknown')" >&2
+  if [[ -s "$COMPILE_LOG" ]]; then
+    printf '%s\n' "--- swiftc output ---" >&2
+    cat "$COMPILE_LOG" >&2
+  fi
+  printf '%s\n' "Try: sudo xcodebuild -runFirstLaunch" >&2
+  printf '%s\n' "Then run this installer again." >&2
+  exit 1
+fi
+
+if [[ "$COMPILE_STATUS" -ne 0 ]]; then
+  printf '%s\n' "Error: Swift compilation failed (exit $COMPILE_STATUS)." >&2
+  printf '%s\n' "Selected developer directory: $(xcode-select -p 2>/dev/null || echo 'unknown')" >&2
+  if [[ -s "$COMPILE_LOG" ]]; then
+    printf '%s\n' "--- swiftc output ---" >&2
+    cat "$COMPILE_LOG" >&2
+  fi
+  exit "$COMPILE_STATUS"
+fi
+
+printf '%s\n' "=> Native app compiled successfully"
 
 printf '%s\n' "=> Creating app bundle at $APP_PATH"
 rm -rf "$APP_PATH"
