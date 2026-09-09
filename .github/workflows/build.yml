@@ -1,0 +1,25 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Compile AppKit app
+        run: swiftc -O -framework AppKit -o /tmp/ClamshellToggle Sources/main.swift
+
+      - name: Validate Info.plist
+        run: plutil -lint Resources/Info.plist
+
+      - name: Validate shell scripts
+        run: bash -n install.sh uninstall.sh
