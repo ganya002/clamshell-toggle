@@ -16,7 +16,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Compile AppKit app
-        run: swiftc -O -framework AppKit -o /tmp/ClamshellToggle Sources/main.swift
+        run: swiftc -Onone -framework AppKit -o /tmp/ClamshellToggle Sources/main.swift
 
       - name: Validate Info.plist
         run: plutil -lint Resources/Info.plist
