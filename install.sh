@@ -3,6 +3,11 @@ set -euo pipefail
 
 # Clamshell Toggle — one-line install for macOS
 # Repo: https://github.com/ganya002/clamshell-toggle
+#
+# Usage:
+#   ./install.sh            full install (asks for sudo once)
+#   ./install.sh --update   rebuild and swap the app in place; no sudo, no restart
+#                           (the running app uses this to update itself)
 
 REPO="ganya002/clamshell-toggle"
 APP_NAME="Clamshell Toggle.app"
@@ -12,7 +17,20 @@ PLIST_PATH="$HOME/Library/LaunchAgents/com.user.clamshell-toggle.plist"
 SUDOERS_PATH="/etc/sudoers.d/clamshell"
 LABEL="com.user.clamshell-toggle"
 
-printf '%s\n' "=> Clamshell Toggle installer"
+UPDATE_MODE=false
+if [[ "${1:-}" == "--update" ]]; then
+  UPDATE_MODE=true
+fi
+
+if [[ "$UPDATE_MODE" == true ]]; then
+  printf '%s\n' "=> Clamshell Toggle updater"
+  if [[ ! -d "$APP_PATH" ]]; then
+    printf '%s\n' "Error: $APP_PATH is not installed. Run the full installer." >&2
+    exit 1
+  fi
+else
+  printf '%s\n' "=> Clamshell Toggle installer"
+fi
 
 if [[ "$(uname)" != "Darwin" ]]; then
   printf '%s\n' "Error: macOS only." >&2
@@ -31,6 +49,9 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" 2>/dev/null && pwd || true)"
 if [[ -n "$SCRIPT_DIR" && -f "$SCRIPT_DIR/Sources/App.swift" && -f "$SCRIPT_DIR/Resources/Info.plist" ]]; then
   printf '%s\n' "=> Using local sources"
   SRC="$SCRIPT_DIR"
+elif [[ "$UPDATE_MODE" == true ]]; then
+  printf '%s\n' "Error: update mode needs the sources next to the script." >&2
+  exit 1
 else
   printf '%s\n' "=> Downloading sources from GitHub"
   curl -fsSL "https://codeload.github.com/$REPO/tar.gz/refs/heads/main" -o "$TMP_DIR/src.tgz"
@@ -152,6 +173,27 @@ if [[ "$COMPILED" != true ]]; then
   exit 1
 fi
 
+if [[ "$UPDATE_MODE" == true ]]; then
+  printf '%s\n' "=> Swapping in the new build"
+  STAGE_PATH="$(dirname "$APP_PATH")/.Clamshell Toggle.app.updating"
+  OLD_PATH="$(dirname "$APP_PATH")/.Clamshell Toggle.app.old"
+  rm -rf "$STAGE_PATH" "$OLD_PATH"
+  mkdir -p "$STAGE_PATH/Contents/MacOS" "$STAGE_PATH/Contents/Resources"
+  cp "$TMP_DIR/ClamshellToggle" "$STAGE_PATH/Contents/MacOS/ClamshellToggle"
+  cp "$TMP_DIR/Info.plist" "$STAGE_PATH/Contents/Info.plist"
+  chmod +x "$STAGE_PATH/Contents/MacOS/ClamshellToggle"
+  codesign --force --sign - "$STAGE_PATH" >/dev/null 2>&1 || true
+  mv "$APP_PATH" "$OLD_PATH"
+  if ! mv "$STAGE_PATH" "$APP_PATH"; then
+    mv "$OLD_PATH" "$APP_PATH"
+    printf '%s\n' "Error: could not move the new build into place." >&2
+    exit 1
+  fi
+  rm -rf "$OLD_PATH"
+  printf '%s\n' "Updated with $USED_DEV_DIR"
+  exit 0
+fi
+
 printf '%s\n' "=> Replacing $APP_PATH"
 launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null || true
 osascript -e 'quit app "Clamshell Toggle"' >/dev/null 2>&1 || true
@@ -210,4 +252,5 @@ launchctl bootstrap "gui/$(id -u)" "$PLIST_PATH" 2>/dev/null || launchctl load "
 printf '\n%s\n' "Installed with $USED_DEV_DIR"
 printf '%s\n' "The menu bar mark is an outline when the Mac can sleep, and filled when the lid is being kept awake."
 printf '%s\n' "Open Settings from that menu for the timer, the schedule, and agents."
+printf '%s\n' "The app checks for updates by itself. Turn that off from the same menu."
 printf '\n%s\n' "Uninstall: curl -fsSL https://raw.githubusercontent.com/$REPO/main/uninstall.sh | bash"

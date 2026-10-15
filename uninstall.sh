@@ -10,6 +10,9 @@ printf '%s\n' "=> Uninstalling Clamshell Toggle"
 printf '%s\n' "-> Stopping Clamshell Toggle"
 launchctl bootout "gui/$(id -u)/com.user.clamshell-toggle" 2>/dev/null || launchctl unload "$PLIST_PATH" 2>/dev/null || true
 
+# An app that restarted itself after an update is not owned by launchd, so stop it by name too.
+killall ClamshellToggle >/dev/null 2>&1 || true
+
 printf '%s\n' "-> Restoring normal sleep"
 if ! sudo -n /usr/bin/pmset disablesleep 0 2>/dev/null; then
   sudo /usr/bin/pmset disablesleep 0
@@ -21,7 +24,7 @@ if [[ -f "$SUDOERS_PATH" ]]; then
 fi
 
 printf '%s\n' "-> Removing the app"
-rm -rf "$APP_PATH"
+rm -rf "$APP_PATH" "$HOME/Applications/.Clamshell Toggle.app.updating" "$HOME/Applications/.Clamshell Toggle.app.old"
 rm -f "$PLIST_PATH"
 
 printf '%s\n' "Uninstalled. Sleep is back to normal."
