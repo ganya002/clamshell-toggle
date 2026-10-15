@@ -6,18 +6,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     private let menu = NSMenu()
     private let statusLine = NSMenuItem(title: "Asleep", action: nil, keyEquivalent: "")
+    private let powerLine = NSMenuItem(title: "Power: Checking…", action: nil, keyEquivalent: "")
+    private let warningLine = NSMenuItem(title: "A closed lid on battery runs warmer and drains faster", action: nil, keyEquivalent: "")
     private let toggleItem = NSMenuItem(title: "Turn on", action: nil, keyEquivalent: "")
     private var settings: SettingsController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         statusLine.isEnabled = false
+        powerLine.isEnabled = false
+        warningLine.isEnabled = false
+        warningLine.isHidden = true
         toggleItem.target = self
         toggleItem.action = #selector(toggle(_:))
 
         menu.delegate = self
         menu.autoenablesItems = false
         menu.addItem(statusLine)
+        menu.addItem(powerLine)
+        menu.addItem(warningLine)
         menu.addItem(.separator())
         menu.addItem(toggleItem)
         let settingsItem = NSMenuItem(title: "Settings…", action: #selector(showSettings(_:)), keyEquivalent: ",")
@@ -25,6 +32,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(settingsItem)
         menu.addItem(.separator())
         let quit = NSMenuItem(title: "Quit Clamshell Toggle", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        quit.toolTip = "Quitting leaves the lid the way it is"
         menu.addItem(quit)
         statusItem.menu = menu
 
@@ -61,7 +69,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func refreshMenu() {
         let awake = model.picture.awake
+        let battery = Power.battery()
         statusLine.title = model.status
+        if let percentage = battery.percentage {
+            powerLine.title = "\(battery.source), \(percentage)%"
+        } else {
+            powerLine.title = battery.source
+        }
+        warningLine.isHidden = !(awake && battery.onBattery)
         toggleItem.title = awake ? "Turn off" : "Turn on"
         statusItem.button?.image = Glyph.image(awake: awake)
         statusItem.button?.imagePosition = .imageOnly

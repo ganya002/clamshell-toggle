@@ -16,7 +16,10 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Compile AppKit app
-        run: swiftc -Onone -framework AppKit -o /tmp/ClamshellToggle Sources/main.swift
+        run: swiftc -Onone -framework AppKit -o /tmp/ClamshellToggle Sources/*.swift
+
+      - name: Run logic tests
+        run: swiftc -o /tmp/clam-tests Tests/EngineTests.swift Sources/Engine.swift && /tmp/clam-tests
 
       - name: Validate Info.plist
         run: plutil -lint Resources/Info.plist

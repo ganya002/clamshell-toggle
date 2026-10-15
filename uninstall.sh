@@ -7,7 +7,7 @@ SUDOERS_PATH="/etc/sudoers.d/clamshell"
 
 printf '%s\n' "=> Uninstalling Clamshell Toggle"
 
-printf '%s\n' "-> Stopping LaunchAgent"
+printf '%s\n' "-> Stopping Clamshell Toggle"
 launchctl bootout "gui/$(id -u)/com.user.clamshell-toggle" 2>/dev/null || launchctl unload "$PLIST_PATH" 2>/dev/null || true
 
 printf '%s\n' "-> Restoring normal sleep"
@@ -20,8 +20,8 @@ if [[ -f "$SUDOERS_PATH" ]]; then
   sudo rm -f "$SUDOERS_PATH"
 fi
 
-printf '%s\n' "-> Removing app and LaunchAgent"
+printf '%s\n' "-> Removing the app"
 rm -rf "$APP_PATH"
 rm -f "$PLIST_PATH"
 
-printf '%s\n' "✓ Uninstalled and restored normal sleep."
+printf '%s\n' "Uninstalled. Sleep is back to normal."

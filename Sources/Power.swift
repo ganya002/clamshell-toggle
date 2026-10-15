@@ -65,6 +65,38 @@ final class PowerGate: @unchecked Sendable {
     }
 }
 
+struct BatteryStatus: Equatable, Sendable {
+    var source: String
+    var percentage: Int?
+    var onBattery: Bool
+}
+
+extension Power {
+    static func battery() -> BatteryStatus {
+        let process = Process()
+        let pipe = Pipe()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/pmset")
+        process.arguments = ["-g", "batt"]
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+        guard (try? process.run()) != nil else {
+            return BatteryStatus(source: "Unknown", percentage: nil, onBattery: false)
+        }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        guard process.terminationStatus == 0, let text = String(data: data, encoding: .utf8) else {
+            return BatteryStatus(source: "Unknown", percentage: nil, onBattery: false)
+        }
+        let onBattery = text.contains("Battery Power")
+        let source = onBattery ? "Battery" : (text.contains("AC Power") ? "Power Adapter" : "Unknown")
+        var percentage: Int?
+        if let match = text.range(of: #"[0-9]{1,3}%"#, options: .regularExpression) {
+            percentage = Int(text[match].dropLast())
+        }
+        return BatteryStatus(source: source, percentage: percentage, onBattery: onBattery)
+    }
+}
+
 enum AgentScan {
     static func current(extra: [String]) -> [String] {
         let process = Process()

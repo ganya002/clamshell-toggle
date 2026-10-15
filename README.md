@@ -2,7 +2,7 @@
 
 A native macOS menu bar app that keeps the lid awake on battery. Close the laptop, leave it running, and turn that back off when you are done.
 
-The menu bar mark is an outline when the machine can sleep, and filled when the lid is being kept awake. Settings is a regular glass panel with three tabs:
+The menu bar mark is an outline when the machine can sleep, and filled when the lid is being kept awake. The menu also shows whether you are on battery. Settings is a regular glass panel with three tabs:
 
 - **Time.** Spin the dial, or type a duration, to keep the lid awake for 1 hour, 2 hours, 4 hours, or anything from 5 minutes to 8 hours.
 - **Schedule.** Pick the days and the hours. An overnight block runs through the next morning.
