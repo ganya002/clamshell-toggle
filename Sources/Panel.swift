@@ -11,7 +11,6 @@ final class SettingsView: NSView {
     private let timePage: TimePage
     private let schedulePage: SchedulePage
     private let agentsPage: AgentsPage
-    private let note = NSTextField(wrappingLabelWithString: "A closed lid runs warmer. Give the machine some air.")
     private var tab = SettingsTab.time
     private var awake = false
     private var appeared = false
@@ -21,7 +20,7 @@ final class SettingsView: NSView {
         timePage = TimePage(model: model)
         schedulePage = SchedulePage(model: model)
         agentsPage = AgentsPage(model: model)
-        super.init(frame: NSRect(x: 0, y: 0, width: 448, height: 592))
+        super.init(frame: NSRect(x: 0, y: 0, width: 448, height: 508))
         wantsLayer = true
         layer?.backgroundColor = NSColor.clear.cgColor
 
@@ -32,11 +31,8 @@ final class SettingsView: NSView {
         statusLabel.font = .systemFont(ofSize: 13)
         statusLabel.textColor = .secondaryLabelColor
         statusLabel.maximumNumberOfLines = 2
-        note.font = .systemFont(ofSize: 12)
-        note.textColor = .secondaryLabelColor
-        note.alignment = .left
 
-        for view in [headerIcon, titleLabel, statusLabel, tabBar, container, note] {
+        for view in [headerIcon, titleLabel, statusLabel, tabBar, container] {
             addSubview(view)
         }
         for page in [timePage, schedulePage, agentsPage] {
@@ -105,9 +101,8 @@ final class SettingsView: NSView {
         statusLabel.frame = CGRect(x: 62, y: 56, width: width - 84, height: 34)
         tabBar.frame = CGRect(x: 18, y: 100, width: width - 36, height: 32)
         let pagesY: CGFloat = 148
-        let pagesH = max(0, bounds.height - pagesY - 46)
+        let pagesH = max(0, bounds.height - pagesY - 22)
         container.frame = CGRect(x: 22, y: pagesY, width: width - 44, height: pagesH)
-        note.frame = CGRect(x: 22, y: bounds.height - 38, width: width - 44, height: 28)
         for page in [timePage, schedulePage, agentsPage] {
             page.frame = container.bounds
         }
@@ -267,13 +262,12 @@ private final class TabBar: NSView {
 private final class TimePage: NSView, NSTextFieldDelegate {
     let model: AppModel
     private let dial: CrownDial
-    private let presets = NSStackView()
+    private let presets = FlippedView()
     private var presetButtons: [PillButton] = []
     private let field = NSTextField()
     private let setButton = PillButton(title: "Set")
     private let fieldRow = NSView()
     private let actionButton = PillButton(title: "Keep awake")
-    private let hint = NSTextField(wrappingLabelWithString: "Spin the dial, or type a time from 5 minutes to 8 hours.")
     private var updating = false
 
     init(model: AppModel) {
@@ -291,16 +285,13 @@ private final class TimePage: NSView, NSTextFieldDelegate {
         }
         addSubview(dial)
 
-        presets.orientation = .horizontal
-        presets.distribution = .fillEqually
-        presets.spacing = 8
         for minutes in [60, 120, 240] {
             let button = PillButton(title: DurationText.words(minutes))
             button.tag = minutes
             button.target = self
             button.action = #selector(preset(_:))
             button.font = .systemFont(ofSize: 13, weight: .semibold)
-            presets.addArrangedSubview(button)
+            presets.addSubview(button)
             presetButtons.append(button)
         }
         addSubview(presets)
@@ -310,7 +301,7 @@ private final class TimePage: NSView, NSTextFieldDelegate {
         field.drawsBackground = false
         field.focusRingType = .none
         field.font = roundedFont(14, .medium)
-        field.placeholderString = "Type 1h 30m"
+        field.placeholderString = "1h 30m"
         field.delegate = self
         field.stringValue = DurationText.compact(model.prefs.dialMinutes)
         fieldRow.wantsLayer = true
@@ -329,10 +320,6 @@ private final class TimePage: NSView, NSTextFieldDelegate {
         actionButton.filled = true
         actionButton.cornerRadius = 12
         addSubview(actionButton)
-
-        hint.font = .systemFont(ofSize: 12)
-        hint.textColor = .secondaryLabelColor
-        addSubview(hint)
         sync()
     }
 
@@ -352,7 +339,6 @@ private final class TimePage: NSView, NSTextFieldDelegate {
             dial.caption = "left"
             updateCountdown()
             actionButton.title = "Stop timer"
-            hint.stringValue = "The lid stays awake until the timer ends."
         } else {
             dial.caption = "awake"
             dial.show(minutes: model.prefs.dialMinutes)
@@ -360,7 +346,6 @@ private final class TimePage: NSView, NSTextFieldDelegate {
                 field.stringValue = DurationText.compact(model.prefs.dialMinutes)
             }
             actionButton.title = "Keep awake"
-            hint.stringValue = "Spin the dial, or type a time from 5 minutes to 8 hours."
         }
         refreshPresets()
         updating = false
@@ -376,10 +361,15 @@ private final class TimePage: NSView, NSTextFieldDelegate {
 
     func layoutContents() {
         let width = bounds.width
-        dial.frame = CGRect(x: (width - 300) / 2, y: 0, width: 300, height: 228)
-        var y: CGFloat = 232
+        dial.frame = CGRect(x: (width - 260) / 2, y: 0, width: 260, height: 184)
+        var y: CGFloat = 200
         if !presets.isHidden {
             presets.frame = CGRect(x: 0, y: y, width: width, height: 34)
+            let gap: CGFloat = 8
+            let chip = (width - gap * CGFloat(presetButtons.count - 1)) / CGFloat(presetButtons.count)
+            for (offset, button) in presetButtons.enumerated() {
+                button.frame = CGRect(x: CGFloat(offset) * (chip + gap), y: 0, width: chip, height: 34)
+            }
             y += 44
         }
         if !fieldRow.isHidden {
@@ -391,8 +381,6 @@ private final class TimePage: NSView, NSTextFieldDelegate {
             y += 46
         }
         actionButton.frame = CGRect(x: 0, y: y, width: width, height: 40)
-        y += 48
-        hint.frame = CGRect(x: 0, y: y, width: width, height: 36)
     }
 
     override func viewDidChangeEffectiveAppearance() {
@@ -513,8 +501,16 @@ private final class CrownDial: NSView {
 
     override func layout() {
         super.layout()
-        valueLabel.frame = CGRect(x: 40, y: bounds.midY - 8, width: bounds.width - 80, height: 48)
-        captionLabel.frame = CGRect(x: 40, y: bounds.midY - 28, width: bounds.width - 80, height: 18)
+        valueLabel.frame = CGRect(x: 40, y: dialCenter.y - 18, width: bounds.width - 80, height: 52)
+        captionLabel.frame = CGRect(x: 40, y: dialCenter.y - 38, width: bounds.width - 80, height: 18)
+    }
+
+    private var dialRadius: CGFloat {
+        min(bounds.width / 2 - 12, (bounds.height - 16) / 1.56)
+    }
+
+    private var dialCenter: CGPoint {
+        CGPoint(x: bounds.midX, y: bounds.height - 8 - dialRadius)
     }
 
     override func hitTest(_ point: NSPoint) -> NSView? {
@@ -524,8 +520,8 @@ private final class CrownDial: NSView {
     }
 
     override func draw(_ dirtyRect: NSRect) {
-        let center = CGPoint(x: bounds.midX, y: bounds.midY + 8)
-        let radius = min(bounds.width, bounds.height) * 0.40
+        let center = dialCenter
+        let radius = dialRadius
         let track = NSBezierPath()
         track.appendArc(
             withCenter: center,
@@ -557,21 +553,22 @@ private final class CrownDial: NSView {
         for (offset, minutes) in detents.enumerated() {
             let tick = angleFor(CGFloat(offset))
             let major = [60, 120, 240].contains(minutes)
-            let active = abs(CGFloat(offset) - knobIndex) < 0.35
-            let inner = radius - (major ? 16 : 11)
-            let outer = radius - 4
+            let passed = Double(offset) / Double(max(1, detents.count - 1)) <= fraction + 0.001
+            let inner = radius - (major ? 20 : 15)
+            let outer = radius - 10
             let mark = NSBezierPath()
             mark.move(to: polar(center, tick, inner))
             mark.line(to: polar(center, tick, outer))
-            let alpha: CGFloat = active ? 1 : (major ? 0.55 : 0.28)
+            let alpha: CGFloat = (major ? 0.5 : 0.25) * (passed ? 1.4 : 1)
             NSColor.labelColor.withAlphaComponent(alpha).setStroke()
-            mark.lineWidth = active ? 2.4 : (major ? 1.6 : 1.15)
+            mark.lineWidth = major ? 1.6 : 1.15
             mark.lineCapStyle = .round
             mark.stroke()
         }
 
-        let knobCenter = polar(center, angleFor(knobIndex), radius - 28)
-        let knob = NSBezierPath(ovalIn: CGRect(x: knobCenter.x - 5, y: knobCenter.y - 5, width: 10, height: 10))
+        guard progress == nil else { return }
+        let knobCenter = polar(center, 90 - end, radius)
+        let knob = NSBezierPath(ovalIn: CGRect(x: knobCenter.x - 6, y: knobCenter.y - 6, width: 12, height: 12))
         NSColor.labelColor.setFill()
         knob.fill()
     }
@@ -622,7 +619,7 @@ private final class CrownDial: NSView {
 
     private func track(_ event: NSEvent) {
         let location = convert(event.locationInWindow, from: nil)
-        let center = CGPoint(x: bounds.midX, y: bounds.midY + 8)
+        let center = dialCenter
         let dx = location.x - center.x
         let dy = location.y - center.y
         let fromTop = normalize(90 - atan2(dy, dx) * 180 / .pi)
@@ -718,7 +715,6 @@ private final class SchedulePage: NSView {
     let model: AppModel
     private let toggle = NSSwitch()
     private let titleLabel = NSTextField(labelWithString: "On a schedule")
-    private let detail = NSTextField(wrappingLabelWithString: "The lid stays awake between these hours.")
     private let daysRow = FlippedView()
     private var dayButtons: [PillButton] = []
     private let fromPicker = NSDatePicker()
@@ -726,7 +722,7 @@ private final class SchedulePage: NSView {
     private let fromLabel = NSTextField(labelWithString: "From")
     private let untilLabel = NSTextField(labelWithString: "Until")
     private let summary = NSTextField(wrappingLabelWithString: "")
-    private let paused = NSTextField(wrappingLabelWithString: "Paused until this block ends. Turn it on from the menu to resume.")
+    private let paused = NSTextField(wrappingLabelWithString: "Paused until this block ends.")
     private let controls = FlippedView()
     private var updating = false
 
@@ -735,8 +731,6 @@ private final class SchedulePage: NSView {
         super.init(frame: .zero)
         wantsLayer = true
         titleLabel.font = .systemFont(ofSize: 14, weight: .semibold)
-        detail.font = .systemFont(ofSize: 12)
-        detail.textColor = .secondaryLabelColor
         toggle.target = self
         toggle.action = #selector(toggled)
         summary.font = .systemFont(ofSize: 13)
@@ -754,7 +748,7 @@ private final class SchedulePage: NSView {
         untilPicker.target = self
         untilPicker.action = #selector(endChanged)
 
-        for view in [toggle, titleLabel, detail, controls, paused] {
+        for view in [toggle, titleLabel, controls, paused] {
             addSubview(view)
         }
         for view in [daysRow, fromLabel, untilLabel, fromPicker, untilPicker, summary] {
@@ -802,10 +796,9 @@ private final class SchedulePage: NSView {
 
     func layoutContents() {
         let width = bounds.width
-        toggle.frame = CGRect(x: width - 52, y: 2, width: 52, height: 28)
-        titleLabel.frame = CGRect(x: 0, y: 0, width: width - 60, height: 18)
-        detail.frame = CGRect(x: 0, y: 20, width: width - 60, height: 32)
-        controls.frame = CGRect(x: 0, y: 66, width: width, height: 180)
+        toggle.frame = CGRect(x: width - 40, y: 0, width: 40, height: 24)
+        titleLabel.frame = CGRect(x: 0, y: 3, width: width - 60, height: 18)
+        controls.frame = CGRect(x: 0, y: 44, width: width, height: 160)
         daysRow.frame = CGRect(x: 0, y: 0, width: width, height: 32)
         let chip: CGFloat = 32
         let gap = max(6, (width - chip * 7) / 6)
@@ -816,22 +809,22 @@ private final class SchedulePage: NSView {
         untilLabel.frame = CGRect(x: width / 2, y: 48, width: 80, height: 16)
         fromPicker.frame = CGRect(x: 0, y: 66, width: width / 2 - 12, height: 28)
         untilPicker.frame = CGRect(x: width / 2, y: 66, width: width / 2 - 8, height: 28)
-        summary.frame = CGRect(x: 0, y: 108, width: width, height: 48)
-        paused.frame = CGRect(x: 0, y: 250, width: width, height: 36)
+        summary.frame = CGRect(x: 0, y: 110, width: width, height: 36)
+        paused.frame = CGRect(x: 0, y: controls.frame.maxY + 8, width: width, height: 18)
     }
 
     private func summaryText() -> String {
-        if model.prefs.days.isEmpty { return "Pick at least one day." }
+        if model.prefs.days.isEmpty { return "No days selected." }
         let days = EngineWeekdays.phrase(model.prefs.days)
         let start = Engine.clock(model.prefs.startMinute, calendar: .current)
         let end = Engine.clock(model.prefs.endMinute, calendar: .current)
         if model.prefs.startMinute == model.prefs.endMinute {
-            return "Choose a start and an end that are not the same."
+            return "Start and end are the same."
         }
         if model.prefs.startMinute > model.prefs.endMinute {
-            return "\(days), from \(start) through \(end) the next morning."
+            return "\(days), \(start) to \(end) next day."
         }
-        return "\(days), from \(start) to \(end)."
+        return "\(days), \(start) to \(end)."
     }
 
     private func configure(_ picker: NSDatePicker) {
@@ -874,16 +867,13 @@ private final class AgentsPage: NSView, NSTextFieldDelegate {
     let model: AppModel
     private let toggle = NSSwitch()
     private let titleLabel = NSTextField(labelWithString: "While an agent is running")
-    private let detail = NSTextField(wrappingLabelWithString: "Turns on when a local agent starts, and off when it finishes.")
     private let card = NSView()
     private let cardText = NSTextField(wrappingLabelWithString: "")
-    private let cardDetail = NSTextField(wrappingLabelWithString: "Cursor, Claude, Codex, Aider, Gemini, and other local agents show up here while they work. An idle Cursor worker stays quiet.")
     private let rows = NSStackView()
     private let watchLabel = NSTextField(labelWithString: "Also watch")
     private let extra = NSTextField()
     private let extraRow = NSView()
-    private let extraNote = NSTextField(wrappingLabelWithString: "Matches the program name exactly, so it will not catch unrelated system processes.")
-    private let paused = NSTextField(wrappingLabelWithString: "Paused for this run. It turns back on the next time an agent starts.")
+    private let paused = NSTextField(wrappingLabelWithString: "Paused until the next agent starts.")
     private var renderedAgents: [String] = []
     private var updating = false
 
@@ -892,16 +882,13 @@ private final class AgentsPage: NSView, NSTextFieldDelegate {
         super.init(frame: .zero)
         wantsLayer = true
         titleLabel.font = .systemFont(ofSize: 14, weight: .semibold)
-        detail.font = .systemFont(ofSize: 12)
-        detail.textColor = .secondaryLabelColor
         toggle.target = self
         toggle.action = #selector(toggled)
         card.wantsLayer = true
         card.layer?.backgroundColor = NSColor.labelColor.withAlphaComponent(0.05).cgColor
         card.layer?.cornerRadius = 12
-        cardText.font = .systemFont(ofSize: 14, weight: .medium)
-        cardDetail.font = .systemFont(ofSize: 12)
-        cardDetail.textColor = .secondaryLabelColor
+        cardText.font = .systemFont(ofSize: 13)
+        cardText.textColor = .secondaryLabelColor
         rows.orientation = .vertical
         rows.alignment = .leading
         rows.spacing = 6
@@ -910,22 +897,19 @@ private final class AgentsPage: NSView, NSTextFieldDelegate {
         extra.drawsBackground = false
         extra.focusRingType = .none
         extra.font = .systemFont(ofSize: 13)
-        extra.placeholderString = "program names, separated by commas"
+        extra.placeholderString = "Program names, comma separated"
         extra.delegate = self
         extra.stringValue = model.prefs.extraAgents.joined(separator: ", ")
         extraRow.wantsLayer = true
         extraRow.layer?.backgroundColor = NSColor.labelColor.withAlphaComponent(0.06).cgColor
         extraRow.layer?.cornerRadius = 10
         extraRow.addSubview(extra)
-        extraNote.font = .systemFont(ofSize: 12)
-        extraNote.textColor = .secondaryLabelColor
         paused.font = .systemFont(ofSize: 12)
         paused.textColor = .secondaryLabelColor
-        for view in [toggle, titleLabel, detail, card, watchLabel, extraRow, extraNote, paused] {
+        for view in [toggle, titleLabel, card, watchLabel, extraRow, paused] {
             addSubview(view)
         }
         card.addSubview(cardText)
-        card.addSubview(cardDetail)
         card.addSubview(rows)
         sync()
     }
@@ -950,9 +934,8 @@ private final class AgentsPage: NSView, NSTextFieldDelegate {
         }
         let empty = model.agents.isEmpty
         cardText.isHidden = !empty
-        cardDetail.isHidden = !empty
         rows.isHidden = empty
-        cardText.stringValue = "No agent is running"
+        cardText.stringValue = "No agents running"
         paused.isHidden = !(model.runtime.pausedAgents && model.prefs.followAgents && !model.agents.isEmpty)
         if extra.currentEditor() == nil {
             let text = model.prefs.extraAgents.joined(separator: ", ")
@@ -964,20 +947,17 @@ private final class AgentsPage: NSView, NSTextFieldDelegate {
 
     func layoutContents() {
         let width = bounds.width
-        toggle.frame = CGRect(x: width - 52, y: 2, width: 52, height: 28)
-        titleLabel.frame = CGRect(x: 0, y: 0, width: width - 60, height: 18)
-        detail.frame = CGRect(x: 0, y: 20, width: width - 60, height: 34)
-        let cardHeight: CGFloat = model.agents.isEmpty ? 92 : CGFloat(max(52, 16 + model.agents.count * 26))
-        card.frame = CGRect(x: 0, y: 64, width: width, height: cardHeight)
-        cardText.frame = CGRect(x: 12, y: 12, width: width - 24, height: 20)
-        cardDetail.frame = CGRect(x: 12, y: 34, width: width - 24, height: 48)
+        toggle.frame = CGRect(x: width - 40, y: 0, width: 40, height: 24)
+        titleLabel.frame = CGRect(x: 0, y: 3, width: width - 60, height: 18)
+        let cardHeight: CGFloat = model.agents.isEmpty ? 44 : CGFloat(max(44, 16 + model.agents.count * 26))
+        card.frame = CGRect(x: 0, y: 44, width: width, height: cardHeight)
+        cardText.frame = CGRect(x: 12, y: 13, width: width - 24, height: 18)
         rows.frame = CGRect(x: 12, y: 10, width: width - 24, height: cardHeight - 16)
         let watchY = card.frame.maxY + 16
         watchLabel.frame = CGRect(x: 0, y: watchY, width: width, height: 18)
         extraRow.frame = CGRect(x: 0, y: watchY + 22, width: width, height: 36)
         extra.frame = CGRect(x: 12, y: 8, width: width - 24, height: 20)
-        extraNote.frame = CGRect(x: 0, y: extraRow.frame.maxY + 8, width: width, height: 36)
-        paused.frame = CGRect(x: 0, y: extraNote.frame.maxY + 8, width: width, height: 36)
+        paused.frame = CGRect(x: 0, y: extraRow.frame.maxY + 10, width: width, height: 18)
     }
 
     override func viewDidChangeEffectiveAppearance() {
@@ -1049,7 +1029,7 @@ private final class PillButton: NSButton {
         let ink: NSColor = on ? (dark ? .black : .white) : .labelColor
         let path = circular
             ? NSBezierPath(ovalIn: bounds.insetBy(dx: 0.5, dy: 0.5))
-            : NSBezierPath(roundedRect: bounds, xRadius: cornerRadius, yRadius: cornerRadius)
+            : NSBezierPath(roundedRect: bounds, xRadius: min(cornerRadius, bounds.height / 2), yRadius: min(cornerRadius, bounds.height / 2))
         fill.setFill()
         path.fill()
         let style = NSMutableParagraphStyle()

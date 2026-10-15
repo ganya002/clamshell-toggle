@@ -7,7 +7,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let menu = NSMenu()
     private let statusLine = NSMenuItem(title: "Asleep", action: nil, keyEquivalent: "")
     private let powerLine = NSMenuItem(title: "Power: Checking…", action: nil, keyEquivalent: "")
-    private let warningLine = NSMenuItem(title: "A closed lid on battery runs warmer and drains faster", action: nil, keyEquivalent: "")
+    private let warningLine = NSMenuItem(title: "Closed lid on battery drains faster", action: nil, keyEquivalent: "")
     private let toggleItem = NSMenuItem(title: "Turn on", action: nil, keyEquivalent: "")
     private var settings: SettingsController?
 
@@ -91,7 +91,7 @@ final class SettingsController: NSWindowController {
 
     init(model: AppModel) {
         let panel = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 448, height: 592),
+            contentRect: NSRect(x: 0, y: 0, width: 448, height: 508),
             styleMask: [.titled, .closable, .fullSizeContentView],
             backing: .buffered,
             defer: false
