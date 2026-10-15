@@ -1,39 +1,22 @@
 # Clamshell Toggle
 
-A tiny native macOS menu bar utility that lets your Mac stay awake with the lid closed — including while running on battery.
+A native macOS menu bar app that keeps the lid awake on battery. Close the laptop, leave it running, and turn that back off when you are done.
 
-Clamshell Toggle uses macOS `pmset disablesleep` and lives entirely in the menu bar. Version 2 replaces the old `Clamshell ON/OFF` text with a compact icon so it barely takes any space.
+The menu bar mark is an outline when the machine can sleep, and filled when the lid is being kept awake. Settings is a regular glass panel with three tabs:
 
-## What the menu bar icon means
+- **Time.** Spin the dial, or type a duration, to keep the lid awake for 1 hour, 2 hours, 4 hours, or anything from 5 minutes to 8 hours.
+- **Schedule.** Pick the days and the hours. An overnight block runs through the next morning.
+- **Agents.** While a local agent is actually working, the lid stays awake. When it exits, sleep comes back. Cursor, Claude, Codex, Aider, Gemini, and a few others are recognized. An idle Cursor worker does not count. You can add other program names.
 
-- **Laptop icon** — Clamshell Mode is ON; system sleep is disabled.
-- **Moon icon** — Clamshell Mode is OFF; normal sleep behavior is restored.
-- **Question mark** — the current `pmset` state could not be read.
+Turning it off from the menu pauses the schedule or the agent watch until that block or that run ends, so it does not immediately switch itself back on.
 
-Click the icon to see the current state, power source, battery percentage, and toggle control.
-
-## Features
-
-- Tiny icon-only native menu bar UI
-- One-click Clamshell Mode ON/OFF
-- Battery percentage + Battery/Power Adapter status
-- Warning when Clamshell Mode is active while running on battery
-- Automatic status refresh every 60 seconds and whenever the menu opens
-- Starts automatically when you log in
-- No Dock icon
-- Native AppKit app with no external runtime or dependencies
-- Narrow sudo permission limited to exactly:
-  - `/usr/bin/pmset disablesleep 0`
-  - `/usr/bin/pmset disablesleep 1`
-- Installer preserves your current sleep state instead of enabling Clamshell Mode during setup
-
-## Install / update
+## Install
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/ganya002/clamshell-toggle/main/install.sh | bash
 ```
 
-Or clone it:
+Or from a checkout:
 
 ```bash
 git clone https://github.com/ganya002/clamshell-toggle.git
@@ -41,16 +24,11 @@ cd clamshell-toggle
 ./install.sh
 ```
 
-The installer:
+The installer compiles the app, puts it in `~/Applications`, starts it at login, and adds one sudoers rule so toggling does not ask for a password:
 
-1. Compiles `Sources/main.swift` with Apple's Swift compiler.
-2. Creates `~/Applications/Clamshell Toggle.app`.
-3. Installs a LaunchAgent so the app starts at login.
-4. Creates a narrowly scoped sudoers rule after validating it with `visudo`.
-5. Verifies the permission while preserving your current `SleepDisabled` state.
-6. Starts the menu bar app.
-
-Installing over an older version upgrades it in place.
+```
+$USER ALL=(root) NOPASSWD: /usr/bin/pmset disablesleep *
+```
 
 ## Uninstall
 
@@ -58,45 +36,14 @@ Installing over an older version upgrades it in place.
 curl -fsSL https://raw.githubusercontent.com/ganya002/clamshell-toggle/main/uninstall.sh | bash
 ```
 
-Or, from a clone:
-
-```bash
-./uninstall.sh
-```
-
-Uninstalling restores normal sleep first, then removes the app, LaunchAgent, and sudoers rule.
-
-## Manual commands
-
-```bash
-sudo pmset disablesleep 1  # Clamshell Mode ON
-sudo pmset disablesleep 0  # restore normal sleep
-pmset -g | grep SleepDisabled
-pmset -g batt              # power source + battery state
-```
+That removes the app, the login item, and the sudoers rule, and restores normal sleep.
 
 ## Requirements
 
-- macOS 13 or newer
+- macOS 26 or later
 - Xcode Command Line Tools (`xcode-select --install`)
 
-## How it works
-
-The app is a small AppKit `NSStatusItem` application with `LSUIElement=true`, so there is no Dock icon. It reads `pmset -g` to determine whether sleep is disabled and runs only one of two passwordless commands when you toggle the setting.
-
-The sudoers entry is:
-
-```text
-$USER ALL=(root) NOPASSWD: /usr/bin/pmset disablesleep 0, /usr/bin/pmset disablesleep 1
-```
-
-No general passwordless `sudo` access is granted.
-
-## Important
-
-Keeping a Mac awake with the lid closed while on battery can drain the battery quickly and may increase heat. Make sure the Mac has reasonable ventilation.
-
-`pmset disablesleep` is system-wide. Quitting Clamshell Toggle does **not** change the current state; the menu explicitly says this so the setting is not changed unexpectedly.
+A closed lid runs warmer. Give the machine some air.
 
 ## License
 
