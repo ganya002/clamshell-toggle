@@ -6,7 +6,7 @@ The menu bar mark is an outline when the machine can sleep, and filled when the 
 
 - **Time.** Spin the dial, or type a duration, to keep the lid awake for 1 hour, 2 hours, 4 hours, or anything from 5 minutes to 8 hours.
 - **Schedule.** Pick the days and the hours. An overnight block runs through the next morning.
-- **Agents.** While a local agent is actually working, the lid stays awake. When it exits, sleep comes back. Cursor, Claude, Codex, Aider, Gemini, and a few others are recognized. An idle Cursor worker does not count. You can add other program names.
+- **Agents.** While a local agent is actually working, the lid stays awake. When it exits, sleep comes back. Cursor, Claude, Codex, Aider, Gemini, Copilot, OpenCode, Cline, Kiro, Qwen, Kimi, and many others are recognized, including when they start through node, bun, python, or npx. Desktop apps, MCP servers, and app servers do not count. An idle Cursor worker does not count. You can add other program names.
 
 Turning it off from the menu pauses the schedule or the agent watch until that block or that run ends, so it does not immediately switch itself back on.
 

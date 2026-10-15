@@ -249,19 +249,72 @@ enum AgentMatch {
         "codex": "Codex",
         "aider": "Aider",
         "gemini": "Gemini",
+        "gemini-cli": "Gemini",
         "opencode": "OpenCode",
         "goose": "Goose",
         "crush": "Crush",
         "openclaw": "OpenClaw",
         "amp": "Amp",
+        "cline": "Cline",
+        "kilo": "Kilo",
+        "kilocode": "Kilo",
+        "qwen": "Qwen",
+        "qwen-code": "Qwen",
+        "kimi": "Kimi",
+        "kimi-cli": "Kimi",
+        "kiro-cli": "Kiro",
+        "kiro-cli-chat": "Kiro",
+        "auggie": "Auggie",
+        "plandex": "Plandex",
+        "openhands": "OpenHands",
+        "gptme": "gptme",
+        "junie": "Junie",
+        "devin": "Devin",
+        "interpreter": "Open Interpreter",
     ]
 
-    static func names(in listing: String, extra: [String]) -> [String] {
+    // Package or install paths that name an agent even when a runner such as node starts it.
+    static let signatures: [(fragment: String, name: String)] = [
+        ("@anthropic-ai/claude-code", "Claude"),
+        ("/share/claude/versions/", "Claude"),
+        ("@openai/codex", "Codex"),
+        ("@google/gemini-cli", "Gemini"),
+        ("opencode-ai", "OpenCode"),
+        ("@github/copilot", "Copilot"),
+        ("@qwen-code/qwen-code", "Qwen"),
+        ("@sourcegraph/amp", "Amp"),
+        ("@augmentcode/auggie", "Auggie"),
+        ("@kilocode/cli", "Kilo"),
+        ("@mariozechner/pi-coding-agent", "Pi"),
+        ("/.factory/bin/droid", "Droid"),
+    ]
+
+    private static let runners: Set<String> = [
+        "node", "nodejs", "bun", "deno", "tsx", "ts-node", "npx", "bunx", "pnpx", "pnpm", "npm", "yarn",
+        "uv", "uvx", "pipx", "ruby", "env",
+    ]
+
+    private static let subcommandWords: Set<String> = ["run", "exec", "dlx", "x", "tool"]
+    private static let scriptSuffixes: Set<String> = ["js", "mjs", "cjs", "ts", "py"]
+
+    // First arguments that start a helper, server, or one-shot command instead of real work.
+    private static let idleWords: Set<String> = [
+        "mcp", "app-server", "serve", "daemon", "login", "logout", "auth", "config", "doctor",
+        "update", "upgrade", "install", "version", "help", "--version", "--help", "-h",
+    ]
+
+    static func names(in listing: String, extra: [String], executables: String = "") -> [String] {
         var seen = Set<String>()
         var found: [String] = []
-        for line in listing.split(separator: "\n", omittingEmptySubsequences: true) {
-            guard let name = identify(command: String(line), extra: extra), seen.insert(name).inserted else { continue }
+        func add(_ name: String?) {
+            guard let name, seen.insert(name).inserted else { return }
             found.append(name)
+        }
+        for line in listing.split(separator: "\n", omittingEmptySubsequences: true) {
+            add(identify(command: String(line), extra: extra))
+        }
+        for line in executables.split(separator: "\n", omittingEmptySubsequences: true) {
+            add(identify(executable: String(line), extra: extra))
         }
         return found
     }
@@ -269,16 +322,51 @@ enum AgentMatch {
     static func identify(command: String, extra: [String]) -> String? {
         let trimmed = command.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty { return nil }
-        if trimmed.hasPrefix("/System/") || trimmed.hasPrefix("/usr/libexec/") || trimmed.hasPrefix("/usr/sbin/") {
-            return nil
-        }
         let lower = trimmed.lowercased()
-        if lower.contains("cursor-agent"), lower.contains("index.js agent"), !lower.contains("worker start") {
+        if lower.contains("cursor-agent"), lower.contains("index.js agent"), !lower.contains("worker start"),
+           !isSystemPath(lower) {
             return "Cursor"
         }
-        let token = firstToken(trimmed)
-        let base = URL(fileURLWithPath: token).lastPathComponent.lowercased()
+        let parts = trimmed.split(separator: " ", omittingEmptySubsequences: true).map(String.init)
+        // A path with spaces inside an app bundle was cut short. The executable listing covers it.
+        if lower.contains(".app/contents/"), !parts[0].lowercased().contains(".app/contents/") { return nil }
+        return identify(executable: parts[0], arguments: Array(parts.dropFirst()), extra: extra)
+    }
+
+    // A bare executable path, as `ps -o comm` prints it. The path may contain spaces.
+    static func identify(executable: String, extra: [String]) -> String? {
+        let trimmed = executable.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty { return nil }
+        return identify(executable: trimmed, arguments: [], extra: extra)
+    }
+
+    private static func identify(executable: String, arguments: [String], extra: [String]) -> String? {
+        let exe = executable.lowercased()
+        if isSystemPath(exe) { return nil }
+        // Desktop apps and their helper processes are not agents.
+        if exe.hasPrefix("/applications/"), exe.contains(".app/contents/") { return nil }
+        let base = lastComponent(exe)
         if base == "clamshelltoggle" || base == "agent" || base == "cursor" { return nil }
+
+        let args = arguments.map { $0.lowercased() }
+        if runners.contains(base) || base.hasPrefix("python") {
+            let (index, script) = firstPositional(args)
+            let tail = index.map { Array(args[($0 + 1)...]) } ?? []
+            if isIdle(tail) { return nil }
+            if let name = signature(in: ([exe] + args).joined(separator: " ")) { return name }
+            guard let script else { return nil }
+            return named(stripSuffix(lastComponent(script)), extra: extra)
+        }
+        if isIdle(args) { return nil }
+        if let name = signature(in: exe) { return name }
+        return named(base, extra: extra)
+    }
+
+    private static func isSystemPath(_ path: String) -> Bool {
+        path.hasPrefix("/system/") || path.hasPrefix("/usr/libexec/") || path.hasPrefix("/usr/sbin/")
+    }
+
+    private static func named(_ base: String, extra: [String]) -> String? {
         if let name = known[base] { return name }
         for raw in extra {
             let needle = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -288,11 +376,40 @@ enum AgentMatch {
         return nil
     }
 
-    private static func firstToken(_ command: String) -> String {
-        if let space = command.firstIndex(of: " ") {
-            return String(command[..<space])
+    private static func signature(in text: String) -> String? {
+        signatures.first { text.contains($0.fragment) }?.name
+    }
+
+    private static func isIdle(_ arguments: [String]) -> Bool {
+        guard let first = arguments.first else { return false }
+        return idleWords.contains(first)
+    }
+
+    // The script, package, or module a runner starts: `node x.js`, `python -m aider`, `uv run aider`.
+    private static func firstPositional(_ args: [String]) -> (Int?, String?) {
+        var index = 0
+        while index < args.count {
+            let arg = args[index]
+            if arg == "-m", index + 1 < args.count { return (index + 1, args[index + 1]) }
+            if arg.hasPrefix("-") || subcommandWords.contains(arg) {
+                index += 1
+                continue
+            }
+            return (index, arg)
         }
-        return command
+        return (nil, nil)
+    }
+
+    private static func lastComponent(_ path: String) -> String {
+        guard let slash = path.lastIndex(of: "/") else { return path }
+        return String(path[path.index(after: slash)...])
+    }
+
+    private static func stripSuffix(_ name: String) -> String {
+        guard let dot = name.lastIndex(of: "."), scriptSuffixes.contains(String(name[name.index(after: dot)...])) else {
+            return name
+        }
+        return String(name[..<dot])
     }
 
     private static func display(_ raw: String) -> String {
