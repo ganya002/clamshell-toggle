@@ -93,6 +93,30 @@ enum EngineTests {
         expect(AgentMatch.identify(command: "/opt/homebrew/bin/codex", extra: []) == "Codex", "codex")
         expect(AgentMatch.identify(command: "/usr/local/bin/mytool", extra: ["mytool"]) == "Mytool", "extra name")
         expect(AgentMatch.identify(command: "/usr/local/bin/node server.js", extra: ["node"]) == nil, "node is too broad")
+        func id(_ command: String) -> String? { AgentMatch.identify(command: command, extra: []) }
+        expect(id("node /opt/homebrew/lib/node_modules/@anthropic-ai/claude-code/cli.js") == "Claude", "claude via node")
+        expect(id("node /usr/local/lib/node_modules/@openai/codex/bin/codex.js --full-auto") == "Codex", "codex via node")
+        expect(id("/usr/local/bin/node /opt/homebrew/bin/gemini") == "Gemini", "gemini via node")
+        expect(id("npx -y @google/gemini-cli") == "Gemini", "gemini via npx")
+        expect(id("bun /Users/x/.bun/bin/opencode") == "OpenCode", "opencode via bun")
+        expect(id("/opt/homebrew/bin/python3.12 -m aider --model sonnet") == "Aider", "aider via python -m")
+        expect(id("python3 /Users/x/.local/bin/aider") == "Aider", "aider via python script")
+        expect(id("uvx kimi-cli") == "Kimi", "kimi via uvx")
+        expect(id("node /opt/homebrew/lib/node_modules/@github/copilot/index.js") == "Copilot", "copilot")
+        expect(id("/Users/x/.local/share/claude/versions/2.1.50 --print") == "Claude", "claude native install")
+        expect(id("/Users/x/.local/bin/kiro-cli-chat chat") == "Kiro", "kiro")
+        expect(id("claude mcp serve") == nil, "claude mcp server is idle")
+        expect(id("/opt/homebrew/bin/codex app-server") == nil, "codex app server is idle")
+        expect(id("node /usr/local/bin/codex --version") == nil, "version check is not work")
+        expect(id("/Applications/Claude.app/Contents/MacOS/Claude") == nil, "desktop app is not an agent")
+        expect(id("/Applications/Claude.app/Contents/Frameworks/Claude Helper.app/Contents/MacOS/Claude Helper --type=gpu") == nil, "helper is not an agent")
+        expect(id("/Users/x/.codex/computer-use/Codex Computer Use.app/Contents/MacOS/Service") == nil, "cut app path")
+        expect(id("node /Users/x/app/server.js") == nil, "plain node script")
+        expect(id("python3 -m http.server") == nil, "plain python module")
+        expect(id("vim /Users/x/.config/claude/notes.md") == nil, "editor is not an agent")
+        let spaced = "/Users/x/Library/Application Support/Claude/claude-code/2.1.50/claude"
+        expect(AgentMatch.identify(executable: spaced, extra: []) == "Claude", "executable path with spaces")
+        expect(AgentMatch.names(in: "node server.js", extra: [], executables: spaced + "\n/bin/zsh") == ["Claude"], "executable listing")
     }
 
     static func date(_ calendar: Calendar, year: Int, month: Int, day: Int, hour: Int, minute: Int) -> Date {

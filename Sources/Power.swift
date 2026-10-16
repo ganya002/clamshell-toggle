@@ -99,16 +99,21 @@ extension Power {
 
 enum AgentScan {
     static func current(extra: [String]) -> [String] {
+        let commands = listing(column: "command=")
+        let executables = listing(column: "comm=")
+        return AgentMatch.names(in: commands, extra: extra, executables: executables)
+    }
+
+    private static func listing(column: String) -> String {
         let process = Process()
         let pipe = Pipe()
         process.executableURL = URL(fileURLWithPath: "/bin/ps")
-        process.arguments = ["-axww", "-o", "command="]
+        process.arguments = ["-axww", "-o", column]
         process.standardOutput = pipe
         process.standardError = FileHandle.nullDevice
-        guard (try? process.run()) != nil else { return [] }
+        guard (try? process.run()) != nil else { return "" }
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
         process.waitUntilExit()
-        guard let text = String(data: data, encoding: .utf8) else { return [] }
-        return AgentMatch.names(in: text, extra: extra)
+        return String(data: data, encoding: .utf8) ?? ""
     }
 }
