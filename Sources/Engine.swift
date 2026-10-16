@@ -418,3 +418,36 @@ enum AgentMatch {
         return first.uppercased() + trimmed.dropFirst()
     }
 }
+
+struct UpdateInfo: Equatable, Sendable {
+    var version: String
+    var build: Int
+
+    static func parse(plist data: Data) -> UpdateInfo? {
+        guard
+            let object = try? PropertyListSerialization.propertyList(from: data, options: [], format: nil),
+            let dictionary = object as? [String: Any],
+            let version = dictionary["CFBundleShortVersionString"] as? String,
+            let buildText = dictionary["CFBundleVersion"] as? String,
+            let build = Int(buildText)
+        else { return nil }
+        return UpdateInfo(version: version, build: build)
+    }
+
+    func isNewer(than build: Int) -> Bool {
+        self.build > build
+    }
+}
+
+enum UpdateSchedule {
+    static func isDue(last: Date?, now: Date, interval: TimeInterval) -> Bool {
+        guard let last else { return true }
+        if last > now { return true }
+        return now.timeIntervalSince(last) >= interval
+    }
+
+    static func isBlocked(failedBuild: Int?, failedAt: Date?, build: Int, now: Date, wait: TimeInterval) -> Bool {
+        guard let failedBuild, let failedAt, failedBuild == build else { return false }
+        return failedAt <= now && now.timeIntervalSince(failedAt) < wait
+    }
+}

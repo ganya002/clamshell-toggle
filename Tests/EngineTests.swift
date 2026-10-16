@@ -7,6 +7,7 @@ enum EngineTests {
         testSchedule()
         testPicture()
         testAgents()
+        testUpdates()
         print("ok")
     }
 
@@ -117,6 +118,35 @@ enum EngineTests {
         let spaced = "/Users/x/Library/Application Support/Claude/claude-code/2.1.50/claude"
         expect(AgentMatch.identify(executable: spaced, extra: []) == "Claude", "executable path with spaces")
         expect(AgentMatch.names(in: "node server.js", extra: [], executables: spaced + "\n/bin/zsh") == ["Claude"], "executable listing")
+    }
+
+    static func testUpdates() {
+        let plist = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0"><dict>
+        <key>CFBundleShortVersionString</key><string>2.2.0</string>
+        <key>CFBundleVersion</key><string>4</string>
+        </dict></plist>
+        """
+        let info = UpdateInfo.parse(plist: Data(plist.utf8))
+        expect(info == UpdateInfo(version: "2.2.0", build: 4), "parse plist")
+        expect(info?.isNewer(than: 3) == true, "newer build")
+        expect(info?.isNewer(than: 4) == false, "same build")
+        expect(info?.isNewer(than: 5) == false, "older build")
+        expect(UpdateInfo.parse(plist: Data("nope".utf8)) == nil, "reject junk")
+        let noBuild = "<plist version=\"1.0\"><dict><key>CFBundleShortVersionString</key><string>1</string></dict></plist>"
+        expect(UpdateInfo.parse(plist: Data(noBuild.utf8)) == nil, "reject missing build")
+
+        let now = Date()
+        expect(UpdateSchedule.isDue(last: nil, now: now, interval: 3600), "never checked")
+        expect(!UpdateSchedule.isDue(last: now.addingTimeInterval(-60), now: now, interval: 3600), "checked lately")
+        expect(UpdateSchedule.isDue(last: now.addingTimeInterval(-3600), now: now, interval: 3600), "interval passed")
+        expect(UpdateSchedule.isDue(last: now.addingTimeInterval(600), now: now, interval: 3600), "clock moved back")
+        expect(UpdateSchedule.isBlocked(failedBuild: 4, failedAt: now.addingTimeInterval(-60), build: 4, now: now, wait: 86400), "recent failure blocks")
+        expect(!UpdateSchedule.isBlocked(failedBuild: 4, failedAt: now.addingTimeInterval(-90000), build: 4, now: now, wait: 86400), "old failure expires")
+        expect(!UpdateSchedule.isBlocked(failedBuild: 4, failedAt: now.addingTimeInterval(-60), build: 5, now: now, wait: 86400), "new build is not blocked")
+        expect(!UpdateSchedule.isBlocked(failedBuild: nil, failedAt: nil, build: 4, now: now, wait: 86400), "no failure")
     }
 
     static func date(_ calendar: Calendar, year: Int, month: Int, day: Int, hour: Int, minute: Int) -> Date {

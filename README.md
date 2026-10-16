@@ -30,6 +30,16 @@ The installer compiles the app, puts it in `~/Applications`, starts it at login,
 $USER ALL=(root) NOPASSWD: /usr/bin/pmset disablesleep *
 ```
 
+## Updates
+
+The app checks GitHub for a newer version a minute after it starts, then every 6 hours. When it finds one, it downloads the source, builds it with the same toolchain as the installer, swaps it into `~/Applications`, and restarts. It waits while Settings is open. No password is needed.
+
+A new version is any commit on `main` that raises `CFBundleVersion` in `Resources/Info.plist`.
+
+The menu has two items for this. **Check for Updates…** runs a check now and asks before it updates. **Update Automatically** turns the background checks off. If a build fails, the app does not retry that version for 24 hours.
+
+Versions before 2.2.0 cannot update themselves. Run the installer once to get 2.2.0.
+
 ## Uninstall
 
 ```bash
