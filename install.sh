@@ -219,7 +219,7 @@ cat > "$PLIST_PATH" <<EOF
 		<string>$BIN_PATH</string>
 	</array>
 	<key>RunAtLoad</key><true/>
-	<key>KeepAlive</key><false/>
+	<key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>
 	<key>LimitLoadToSessionType</key><string>Aqua</string>
 </dict>
 </plist>
@@ -251,6 +251,6 @@ launchctl bootstrap "gui/$(id -u)" "$PLIST_PATH" 2>/dev/null || launchctl load "
 
 printf '\n%s\n' "Installed with $USED_DEV_DIR"
 printf '%s\n' "The menu bar mark is an outline when the Mac can sleep, and filled when the lid is being kept awake."
-printf '%s\n' "Open Settings from that menu for the timer, the schedule, and agents."
+printf '%s\n' "Everything, including the timer, the schedule, and agents, is in that menu."
 printf '%s\n' "The app checks for updates by itself. Turn that off from the same menu."
 printf '\n%s\n' "Uninstall: curl -fsSL https://raw.githubusercontent.com/$REPO/main/uninstall.sh | bash"

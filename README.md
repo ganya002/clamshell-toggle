@@ -2,11 +2,13 @@
 
 A native macOS menu bar app that keeps the lid awake on battery. Close the laptop, leave it running, and turn that back off when you are done.
 
-The menu bar mark is an outline when the machine can sleep, and filled when the lid is being kept awake. The menu also shows whether you are on battery. Settings is a regular glass panel with three tabs:
+The menu bar mark is an outline when the machine can sleep, and filled when the lid is being kept awake. Everything lives in that one menu, with no separate window:
 
-- **Time.** Spin the dial, or type a duration, to keep the lid awake for 1 hour, 2 hours, 4 hours, or anything from 5 minutes to 8 hours.
-- **Schedule.** Pick the days and the hours. An overnight block runs through the next morning.
-- **Agents.** While a local agent is actually working, the lid stays awake. When it exits, sleep comes back. Cursor, Claude, Codex, Aider, Gemini, Copilot, OpenCode, Cline, Kiro, Qwen, Kimi, and many others are recognized, including when they start through node, bun, python, or npx. Desktop apps, MCP servers, and app servers do not count. An idle Cursor worker does not count. You can add other program names.
+- **Turn On / Turn Off.** Keep the lid awake until you turn it off.
+- **Keep Awake For.** Pick 15 minutes up to 8 hours, or choose Custom… and type a duration such as `45m` or `1h 30m`. While a timer runs, the menu shows the time left and a Stop Timer item.
+- **Schedule.** Pick the days, then Set Hours…. An overnight block runs through the next morning.
+- **Agents.** While a local agent is actually running, the lid stays awake. When it exits, sleep comes back. Cursor, Claude, Codex, Aider, Gemini, Copilot, OpenCode, Cline, Kiro, Qwen, Kimi, and many others are recognized, including when they start through node, bun, python, or npx. Desktop apps, MCP servers, and app servers do not count. An idle Cursor worker does not count. Add Other Programs… lets you name more.
+- **Power.** The menu also shows whether you are on battery, and warns that a closed lid on battery drains faster.
 
 Turning it off from the menu pauses the schedule or the agent watch until that block or that run ends, so it does not immediately switch itself back on.
 
@@ -27,12 +29,12 @@ cd clamshell-toggle
 The installer compiles the app, puts it in `~/Applications`, starts it at login, and adds one sudoers rule so toggling does not ask for a password:
 
 ```
-$USER ALL=(root) NOPASSWD: /usr/bin/pmset disablesleep *
+$USER ALL=(root) NOPASSWD: /usr/bin/pmset disablesleep 0, /usr/bin/pmset disablesleep 1
 ```
 
 ## Updates
 
-The app checks GitHub for a newer version a minute after it starts, then every 6 hours. When it finds one, it downloads the source, builds it with the same toolchain as the installer, swaps it into `~/Applications`, and restarts. It waits while Settings is open. No password is needed.
+The app checks GitHub for a newer version a minute after it starts, then every 6 hours. When it finds one, it downloads the source, builds it with the same toolchain as the installer, swaps it into `~/Applications`, and restarts. No password is needed.
 
 A new version is any commit on `main` that raises `CFBundleVersion` in `Resources/Info.plist`.
 

@@ -1,109 +1,245 @@
 import AppKit
 
+private final class ActionItem: NSMenuItem {
+    private let handler: () -> Void
+
+    init(_ title: String, checked: Bool = false, enabled: Bool = true, handler: @escaping () -> Void) {
+        self.handler = handler
+        super.init(title: title, action: #selector(run), keyEquivalent: "")
+        target = self
+        state = checked ? .on : .off
+        isEnabled = enabled
+    }
+
+    @available(*, unavailable)
+    required init(coder: NSCoder) { fatalError() }
+
+    @objc private func run() { handler() }
+}
+
+private func label(_ title: String) -> NSMenuItem {
+    let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+    item.isEnabled = false
+    return item
+}
+
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let model = AppModel()
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     private let menu = NSMenu()
-    private let statusLine = NSMenuItem(title: "Asleep", action: nil, keyEquivalent: "")
-    private let powerLine = NSMenuItem(title: "Power: Checking…", action: nil, keyEquivalent: "")
-    private let warningLine = NSMenuItem(title: "Closed lid on battery drains faster", action: nil, keyEquivalent: "")
-    private let toggleItem = NSMenuItem(title: "Turn on", action: nil, keyEquivalent: "")
     private let updater = Updater()
-    private let updateItem = NSMenuItem(title: "Check for Updates…", action: nil, keyEquivalent: "")
-    private let autoUpdateItem = NSMenuItem(title: "Update Automatically", action: nil, keyEquivalent: "")
-    private var settings: SettingsController?
+    private let timerChoices = [15, 30, 60, 120, 240, 480]
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
-        statusLine.isEnabled = false
-        powerLine.isEnabled = false
-        warningLine.isEnabled = false
-        warningLine.isHidden = true
-        toggleItem.target = self
-        toggleItem.action = #selector(toggle(_:))
-
         menu.delegate = self
         menu.autoenablesItems = false
-        menu.addItem(statusLine)
-        menu.addItem(powerLine)
-        menu.addItem(warningLine)
+        statusItem.menu = menu
+
+        model.onStatusChange = { [weak self] in self?.refreshIcon() }
+        model.onTick = { [weak self] in self?.refreshStatusLine() }
+        model.start()
+        refreshIcon()
+
+        if Updater.supported {
+            updater.canRelaunch = { NSApp.modalWindow == nil }
+            updater.willRelaunch = { [weak self] in self?.statusItem.isVisible = false }
+            updater.didFailRelaunch = { [weak self] in self?.statusItem.isVisible = true }
+            updater.start()
+        }
+    }
+
+    // The menu is built fresh each time it opens, so it always shows the current state.
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        menu.removeAllItems()
+        menu.addItem(ActionItem(model.picture.awake ? "Turn Off" : "Turn On") { [model] in model.toggleFromMenu() })
+        if let end = model.picture.timerEndsAt {
+            let left = DurationText.countdown(end.timeIntervalSince(model.now))
+            menu.addItem(ActionItem("Stop Timer (\(left) left)") { [model] in model.stopTimer() })
+        } else {
+            menu.addItem(timerMenu())
+        }
         menu.addItem(.separator())
-        menu.addItem(toggleItem)
-        let settingsItem = NSMenuItem(title: "Settings…", action: #selector(showSettings(_:)), keyEquivalent: ",")
-        settingsItem.target = self
-        menu.addItem(settingsItem)
+        menu.addItem(scheduleMenu())
+        menu.addItem(agentsMenu())
+
         if Updater.supported {
             menu.addItem(.separator())
-            updateItem.target = self
-            updateItem.action = #selector(updatePressed(_:))
-            autoUpdateItem.target = self
-            autoUpdateItem.action = #selector(toggleAutoUpdate(_:))
-            menu.addItem(updateItem)
-            menu.addItem(autoUpdateItem)
+            addUpdateItems()
         }
         menu.addItem(.separator())
         let quit = NSMenuItem(title: "Quit Clamshell Toggle", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         quit.toolTip = "Quitting leaves the lid the way it is"
         menu.addItem(quit)
-        statusItem.menu = menu
+    }
 
-        model.onStatusChange = { [weak self] in
-            self?.refreshMenu()
-            self?.settings?.sync()
-        }
-        model.onTick = { [weak self] in
-            self?.settings?.updateCountdown()
-        }
-        model.start()
-        refreshMenu()
+    private func submenu(_ title: String, _ items: [NSMenuItem]) -> NSMenuItem {
+        let parent = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+        let child = NSMenu(title: title)
+        child.autoenablesItems = false
+        items.forEach(child.addItem)
+        parent.submenu = child
+        return parent
+    }
 
-        if Updater.supported {
-            updater.onChange = { [weak self] in
-                self?.refreshUpdateItem()
+    private func timerMenu() -> NSMenuItem {
+        var items = timerChoices.map { minutes in
+            ActionItem(DurationText.words(minutes)) { [model] in model.startTimer(minutes: minutes) }
+        } as [NSMenuItem]
+        items.append(.separator())
+        items.append(ActionItem("Custom…") { [weak self] in self?.askDuration() })
+        return submenu("Keep Awake For", items)
+    }
+
+    private func scheduleMenu() -> NSMenuItem {
+        let prefs = model.prefs
+        var items: [NSMenuItem] = [
+            ActionItem("Keep Awake on a Schedule", checked: prefs.scheduleEnabled) { [model] in
+                model.setScheduleEnabled(!model.prefs.scheduleEnabled)
+            },
+            label(scheduleSummary()),
+            .separator(),
+        ]
+        let calendar = Calendar.current
+        for offset in 0..<7 {
+            let weekday = (calendar.firstWeekday - 1 + offset) % 7 + 1
+            items.append(ActionItem(calendar.weekdaySymbols[weekday - 1], checked: prefs.days.contains(weekday)) { [model] in
+                model.toggleDay(weekday)
+            })
+        }
+        items.append(.separator())
+        items.append(ActionItem("Set Hours…") { [weak self] in self?.askHours() })
+        return submenu("Schedule", items)
+    }
+
+    private func scheduleSummary() -> String {
+        let prefs = model.prefs
+        if prefs.days.isEmpty { return "No days selected" }
+        let calendar = Calendar.current
+        let set = Set(prefs.days)
+        let days: String
+        if set == [2, 3, 4, 5, 6] {
+            days = "Weekdays"
+        } else if set == [1, 7] {
+            days = "Weekends"
+        } else if set.count == 7 {
+            days = "Every day"
+        } else {
+            days = (0..<7).map { (calendar.firstWeekday - 1 + $0) % 7 + 1 }
+                .filter(set.contains)
+                .map { calendar.shortWeekdaySymbols[$0 - 1] }
+                .joined(separator: ", ")
+        }
+        return "\(days), \(Engine.clock(prefs.startMinute, calendar: calendar)) to \(Engine.clock(prefs.endMinute, calendar: calendar))"
+    }
+
+    private func agentsMenu() -> NSMenuItem {
+        var items: [NSMenuItem] = [
+            ActionItem("Stay Awake While Agents Run", checked: model.prefs.followAgents) { [model] in
+                model.setFollowAgents(!model.prefs.followAgents)
+            },
+        ]
+        if !model.agents.isEmpty {
+            items.append(label("Running: " + model.agents.joined(separator: ", ")))
+        }
+        items.append(.separator())
+        let extra = model.prefs.extraAgents
+        items.append(ActionItem(extra.isEmpty ? "Add Other Programs…" : "Other Programs: \(extra.joined(separator: ", "))…") { [weak self] in
+            self?.askPrograms()
+        })
+        return submenu("Agents", items)
+    }
+
+    private func addUpdateItems() {
+        let title: String
+        var enabled = true
+        switch updater.state {
+        case .idle: title = "Check for Updates…"
+        case .checking: title = "Checking for Updates…"; enabled = false
+        case .available(let info): title = "Update to \(info.version)…"
+        case .installing(let info): title = "Updating to \(info.version)…"; enabled = false
+        case .ready: title = "Restart to Finish Update"
+        case .failed: title = "Update Failed. Try Again…"
+        }
+        menu.addItem(ActionItem(title, enabled: enabled) { [weak self] in
+            Task { await self?.updateFromMenu() }
+        })
+        menu.addItem(ActionItem("Update Automatically", checked: updater.automatic) { [updater] in
+            updater.automatic.toggle()
+        })
+    }
+
+    private func refreshStatusLine() {
+        if let end = model.picture.timerEndsAt,
+           let item = menu.items.first(where: { $0.title.hasPrefix("Stop Timer") }) {
+            item.title = "Stop Timer (\(DurationText.countdown(end.timeIntervalSince(model.now))) left)"
+        }
+    }
+
+    private func refreshIcon() {
+        let awake = model.picture.awake
+        statusItem.button?.image = Glyph.image(awake: awake)
+        statusItem.button?.imagePosition = .imageOnly
+        statusItem.button?.toolTip = model.status
+    }
+
+    // MARK: Dialogs
+
+    private func dialog(_ title: String, _ detail: String, accessory: NSView?, button: String = "Set") -> Bool {
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = detail
+        alert.accessoryView = accessory
+        alert.addButton(withTitle: button)
+        alert.addButton(withTitle: "Cancel")
+        NSApp.activate(ignoringOtherApps: true)
+        return alert.runModal() == .alertFirstButtonReturn
+    }
+
+    private func textField(_ value: String, placeholder: String) -> NSTextField {
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 240, height: 24))
+        field.stringValue = value
+        field.placeholderString = placeholder
+        return field
+    }
+
+    private func askDuration() {
+        let field = textField(DurationText.compact(model.prefs.dialMinutes), placeholder: "1h 30m")
+        while dialog("Keep awake for how long?", "From 5 minutes to 8 hours. For example 45m, 1h 30m, or 2:15.", accessory: field, button: "Start") {
+            if let minutes = DurationText.parse(field.stringValue) {
+                model.startTimer(minutes: minutes)
+                return
             }
-            updater.canRelaunch = { [weak self] in
-                NSApp.modalWindow == nil && !(self?.settings?.isVisible ?? false)
-            }
-            updater.willRelaunch = { [weak self] in
-                self?.statusItem.isVisible = false
-            }
-            updater.didFailRelaunch = { [weak self] in
-                self?.statusItem.isVisible = true
-            }
-            updater.start()
-            refreshUpdateItem()
-        }
-
-        if CommandLine.arguments.contains("--settings") {
-            showSettings(nil)
+            notify("That is not a duration", "Try something like 45m, 1h 30m, or 2:15.")
         }
     }
 
-    func menuNeedsUpdate(_ menu: NSMenu) {
-        refreshMenu()
-    }
-
-    @objc private func toggle(_ sender: Any?) {
-        model.toggleFromMenu()
-        refreshMenu()
-    }
-
-    @objc private func showSettings(_ sender: Any?) {
-        if settings == nil {
-            settings = SettingsController(model: model)
+    private func askHours() {
+        func picker(_ minute: Int) -> NSDatePicker {
+            let picker = NSDatePicker(frame: NSRect(x: 0, y: 0, width: 90, height: 24))
+            picker.datePickerStyle = .textFieldAndStepper
+            picker.datePickerElements = .hourMinute
+            picker.dateValue = Engine.date(minute: minute, calendar: .current)
+            return picker
         }
-        settings?.show()
+        let start = picker(model.prefs.startMinute)
+        let end = picker(model.prefs.endMinute)
+        let row = NSStackView(views: [NSTextField(labelWithString: "From"), start, NSTextField(labelWithString: "to"), end])
+        row.spacing = 8
+        row.frame = NSRect(x: 0, y: 0, width: 280, height: 28)
+        guard dialog("Schedule hours", "A block that ends before it starts runs overnight.", accessory: row) else { return }
+        model.setStart(start.dateValue)
+        model.setEnd(end.dateValue)
     }
 
-    @objc private func toggleAutoUpdate(_ sender: Any?) {
-        updater.automatic.toggle()
-        refreshUpdateItem()
+    private func askPrograms() {
+        let field = textField(model.prefs.extraAgents.joined(separator: ", "), placeholder: "mytool, other")
+        guard dialog("Other programs", "Names of programs to treat as agents. Separate them with commas.", accessory: field, button: "Save") else { return }
+        model.setExtraAgents(field.stringValue)
     }
 
-    @objc private func updatePressed(_ sender: Any?) {
-        Task { await updateFromMenu() }
-    }
+    // MARK: Updates
 
     private func updateFromMenu() async {
         var target: UpdateInfo?
@@ -129,7 +265,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 notify("You are up to date", "Clamshell Toggle \(version) is the newest version.")
                 return
             case .available(let info):
-                guard confirm("Version \(info.version) is available", "Clamshell Toggle builds the new version, then restarts.") else { return }
+                guard dialog("Version \(info.version) is available", "Clamshell Toggle builds the new version, then restarts.", accessory: nil, button: "Update") else { return }
                 target = info
             }
         }
@@ -148,121 +284,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         alert.addButton(withTitle: "OK")
         NSApp.activate(ignoringOtherApps: true)
         alert.runModal()
-    }
-
-    private func confirm(_ title: String, _ detail: String) -> Bool {
-        let alert = NSAlert()
-        alert.messageText = title
-        alert.informativeText = detail
-        alert.addButton(withTitle: "Update")
-        alert.addButton(withTitle: "Not Now")
-        NSApp.activate(ignoringOtherApps: true)
-        return alert.runModal() == .alertFirstButtonReturn
-    }
-
-    private func refreshUpdateItem() {
-        switch updater.state {
-        case .idle:
-            updateItem.title = "Check for Updates…"
-            updateItem.isEnabled = true
-        case .checking:
-            updateItem.title = "Checking for Updates…"
-            updateItem.isEnabled = false
-        case .available(let info):
-            updateItem.title = "Update to \(info.version)…"
-            updateItem.isEnabled = true
-        case .installing(let info):
-            updateItem.title = "Updating to \(info.version)…"
-            updateItem.isEnabled = false
-        case .ready:
-            updateItem.title = "Restart to Finish Update"
-            updateItem.isEnabled = true
-        case .failed:
-            updateItem.title = "Update Failed. Try Again…"
-            updateItem.isEnabled = true
-        }
-        autoUpdateItem.state = updater.automatic ? .on : .off
-    }
-
-    private func refreshMenu() {
-        let awake = model.picture.awake
-        let battery = Power.battery()
-        statusLine.title = model.status
-        if let percentage = battery.percentage {
-            powerLine.title = "\(battery.source), \(percentage)%"
-        } else {
-            powerLine.title = battery.source
-        }
-        warningLine.isHidden = !(awake && battery.onBattery)
-        toggleItem.title = awake ? "Turn off" : "Turn on"
-        statusItem.button?.image = Glyph.image(awake: awake)
-        statusItem.button?.imagePosition = .imageOnly
-        statusItem.button?.toolTip = model.status
-        statusItem.button?.appearsDisabled = false
-    }
-}
-
-@MainActor
-final class SettingsController: NSWindowController {
-    private var host: SettingsView?
-
-    init(model: AppModel) {
-        let panel = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 448, height: 508),
-            styleMask: [.titled, .closable, .fullSizeContentView],
-            backing: .buffered,
-            defer: false
-        )
-        panel.title = "Clamshell"
-        panel.titlebarAppearsTransparent = true
-        panel.titleVisibility = .hidden
-        panel.isOpaque = false
-        panel.backgroundColor = .clear
-        panel.hasShadow = true
-        panel.isMovableByWindowBackground = true
-        panel.level = .floating
-        panel.hidesOnDeactivate = false
-        panel.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
-        panel.sharingType = .readOnly
-        super.init(window: panel)
-
-        let effect = NSGlassEffectView(frame: panel.contentView?.bounds ?? .zero)
-        effect.autoresizingMask = [.width, .height]
-        effect.style = .regular
-        effect.cornerRadius = 18
-        let host = SettingsView(model: model)
-        host.autoresizingMask = [.width, .height]
-        host.frame = effect.bounds
-        effect.contentView = host
-        panel.contentView = effect
-        self.host = host
-        panel.standardWindowButton(.miniaturizeButton)?.isHidden = true
-        panel.standardWindowButton(.zoomButton)?.isHidden = true
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) { nil }
-
-    func show() {
-        window?.center()
-        NSApp.activate(ignoringOtherApps: true)
-        showWindow(nil)
-        window?.makeKeyAndOrderFront(nil)
-        window?.sharingType = .readOnly
-        host?.sync()
-        host?.reveal()
-    }
-
-    var isVisible: Bool {
-        window?.isVisible ?? false
-    }
-
-    func sync() {
-        host?.sync()
-    }
-
-    func updateCountdown() {
-        host?.updateCountdown()
     }
 }
 
