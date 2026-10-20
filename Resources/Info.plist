@@ -9,8 +9,8 @@
 	<key>CFBundleName</key><string>Clamshell Toggle</string>
 	<key>CFBundlePackageType</key><string>APPL</string>
 	<key>CFBundleDisplayName</key><string>Clamshell Toggle</string>
-	<key>CFBundleShortVersionString</key><string>2.2.0</string>
-	<key>CFBundleVersion</key><string>4</string>
+	<key>CFBundleShortVersionString</key><string>2.3.0</string>
+	<key>CFBundleVersion</key><string>6</string>
 	<key>LSMinimumSystemVersion</key><string>26.0</string>
 	<key>LSUIElement</key><true/>
 	<key>NSHighResolutionCapable</key><true/>

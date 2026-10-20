@@ -67,7 +67,8 @@ final class AppModel: ObservableObject {
         applyFailed = false
         let minutes = DurationText.clamp(minutes)
         prefs.dialMinutes = minutes
-        runtime.timerEndsAt = Date().addingTimeInterval(TimeInterval(minutes * 60))
+        now = Date()
+        runtime.timerEndsAt = now.addingTimeInterval(TimeInterval(minutes * 60))
         runtime.timerMinutes = minutes
         runtime.pausedAgents = false
         runtime.pausedSchedule = false
@@ -81,11 +82,6 @@ final class AppModel: ObservableObject {
         runtime.timerMinutes = nil
         persistRuntime()
         recompute(apply: true)
-    }
-
-    func setDial(_ minutes: Int) {
-        prefs.dialMinutes = DurationText.clamp(minutes)
-        persistPrefs()
     }
 
     func setFollowAgents(_ enabled: Bool) {
@@ -202,7 +198,7 @@ final class AppModel: ObservableObject {
         guard !alertVisible else { return }
         alertVisible = true
         let detail = (error as? PowerError)?.description ?? error.localizedDescription
-        let command = "echo '\(NSUserName()) ALL=(root) NOPASSWD: /usr/bin/pmset disablesleep *' | sudo tee /etc/sudoers.d/clamshell >/dev/null && sudo chmod 0440 /etc/sudoers.d/clamshell"
+        let command = "echo '\(NSUserName()) ALL=(root) NOPASSWD: /usr/bin/pmset disablesleep 0, /usr/bin/pmset disablesleep 1' | sudo tee /etc/sudoers.d/clamshell >/dev/null && sudo chmod 0440 /etc/sudoers.d/clamshell"
         let alert = NSAlert()
         alert.alertStyle = .warning
         alert.messageText = "One-time setup needed"
