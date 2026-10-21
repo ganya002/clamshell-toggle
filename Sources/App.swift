@@ -36,6 +36,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.delegate = self
         menu.autoenablesItems = false
         statusItem.menu = menu
+        // An update relaunch hides the old icon, and macOS remembers that. Always start visible.
+        statusItem.isVisible = true
 
         model.onStatusChange = { [weak self] in self?.refreshIcon() }
         model.onTick = { [weak self] in self?.refreshStatusLine() }
